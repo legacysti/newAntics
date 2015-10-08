@@ -46,7 +46,7 @@ class AIPlayer(Player):
         self.depthLimit = 2
         self.preProcessMatrix = None
         closestFood = None
-        super(AIPlayer,self).__init__(inputPlayerId, "HASHTAG-SUPERDUPERPOOPERSCOOPER")
+        super(AIPlayer,self).__init__(inputPlayerId, "min3")
 
     def evaluateNodes(self, nodeList):
         bestRating = 0.0
@@ -95,21 +95,6 @@ class AIPlayer(Player):
                 self.recursiveExplore(node, playerID, currentDepth)
         return self.evaluateNodes(nodeList)
 
-
-    ##
-    #getPlacement
-    #
-    #Description: called during setup phase for each Construction that
-    #   must be placed by the player.  These items are: 1 Anthill on
-    #   the player's side; 1 tunnel on player's side; 9 grass on the
-    #   player's side; and 2 food on the enemy's side.
-    #
-    #Parameters:
-    #   construction - the Construction to be placed.
-    #   currentState - the state of the game at this point in time.
-    #
-    #Return: The coordinates of where the construction is to be placed
-    ##
     def getPlacement(self, currentState):
         numToPlace = 0
         #implemented by students to return their next move
@@ -150,15 +135,7 @@ class AIPlayer(Player):
         else:
             return [(0, 0)]
 
-    ##
-    #getMove
-    #Description: Gets the next move from the Player.
-    #
-    #Parameters:
-    #   currentState - The state of the current game waiting for the player's move (GameState)
-    #
-    #Return: The Move to be made
-    ##
+
     def getMove(self, currentState):
         playerID = currentState.whoseTurn
 
@@ -169,11 +146,7 @@ class AIPlayer(Player):
             constrList = getConstrList(currentState, playerID, [(ANTHILL),(TUNNEL)])
             for x in range(10):
                 for y in range(10):
-                    ##
-                    #squareProperties[0] = the location of constructs
-                    #squareProperties[1] = the distance to food for each squareProperties
-                    #squareProperties[2] = the distance to the closest tunnel
-                    ##
+
                     squareProperties = []
                     # squareProperties = squareProperties.append()
                     const = getConstrAt(currentState, (x, y))
@@ -214,10 +187,6 @@ class AIPlayer(Player):
         returnedNode = self.recursiveExplore(parentNode, playerID, 0)
         return returnedNode[0].move
 
-
-
-
-
     ##
     #
     ##
@@ -238,20 +207,6 @@ class AIPlayer(Player):
         elif(enemyInv.foodCount == 11 or playerInv.getQueen() == None):
             return 0.0 #lose
 
-        # foodList = getConstrList(state, NEUTRAL, [(FOOD)])
-        #
-        # #find the closest food to tunnel only once
-        # if(closestFood == None):
-        #     best = 100
-        #     closestFood = None
-        #     for f in foodList:
-        #         src = playerInv.getTunnels()[0].coords
-        #         dst = f.coords
-        #         stepsToF = stepsToReach(state, src, dst)
-        #         if (stepsToF < best):
-        #             best = stepsToF
-        #             closestFood = f.coords
-        #
         bestFoodRating = 100.0
         bestAntRating = 275.0
 
@@ -273,36 +228,18 @@ class AIPlayer(Player):
 
                 foodRating += (100.0 / (dst + 1))
 
-
-            # if(a.type == DRONE):
-            #     dst = enemyInv.getQueen().coords
-            #     distance = stepsToReach(state, a.coords, dst)
-            #     antRating += (100.0 / (distance))
-
-        #move the queen off of the ant hill
         queenCoords = playerInv.getQueen().coords
         hillCoords = playerInv.getAnthill().coords
-        if(queenCoords == hillCoords):
-            antRating -=75
-
-        #Attack the queen
-        # if(enemyInv.getQueen().health < enemyCurrInv.getQueen().health):
-        #     antRating += 100
+        if(getAntAt(currentState, hillCoords) != None):
+            antRating -=100
 
         workerCount = len(getAntList(state, player, [(WORKER)]))
-        droneCount = len(getAntList(state, player, [DRONE]))
+        droneCount = len(getAntList(state, player, [(DRONE)]))
 
-        # for a in playerInv.ants:
-        #     if(a.type == WORKER and workerCount < 1):
-        #         antRating += 10.0
-        #     elif (a.type == DRONE and droneCount < 2):
-        #         antRating += 10.0
-        #     elif (a.type == SOLDIER or a.type == R_SOLDIER):
-        #         antRating += 0.0
         if(workerCount == 2):
             antRating += 75.0
-        if(droneCount == 2):
-            antRating == 50
+        if(droneCount == 1):
+            antRating == 0
         if(workerCount == 1): #or droneCount == 2
             antRating += 75.0
 
@@ -400,40 +337,6 @@ class AIPlayer(Player):
 
         return state.fastclone()
 
-
-    ##
-    #getAttack
-    #Description: Gets the attack to be made from the Player
-    #
-    #Parameters:
-    #   currentState - A clone of the current state (GameState)
-    #   attackingAnt - The ant currently making the attack (Ant)
-    #   enemyLocation - The Locations of the Enemies that can be attacked (Location[])
-    ##
     def getAttack(self, currentState, attackingAnt, enemyLocations):
         #Attack a random enemy.
         return enemyLocations[random.randint(0, len(enemyLocations) - 1)]
-
-
-board = [[Location((col, row)) for row in xrange(0,BOARD_LENGTH)] for col in xrange(0,BOARD_LENGTH)]
-p1Inventory = Inventory(PLAYER_ONE, [], [], 0)
-p2Inventory = Inventory(PLAYER_TWO, [], [], 0)
-neutralInventory = Inventory(NEUTRAL, [], [], 0)
-state = GameState(board, [p1Inventory, p2Inventory, neutralInventory], MENU_PHASE, PLAYER_ONE)
-
-worker = Ant((0,0), WORKER, PLAYER_ONE)
-
-state.inventories[PLAYER_ONE].ants.append(worker)
-
-move = Move(MOVE_ANT, [(0,0), (1,0)], None)
-
-player = AIPlayer(PLAYER_ONE)
-
-projected = player.getStateProjection(state, move)
-
-if(projected.inventories[PLAYER_ONE].ants[0].coords != (1,0)):
-    print "Error. Incorrect result state."
-
-rating = player.getStateRating(state, projected)
-if(rating <= 1.0 and rating >= 0.0):
-    print "Unit Test #1 Passed"
