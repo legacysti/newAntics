@@ -185,14 +185,30 @@ class AIPlayer(Player):
         #This is the best move from the view of the current player (state.whoseTurn)
         children = []
         bestMove = None
-        bestScore = -float("inf") if state.whoseTurn == self.playerId else float("inf")
+        bestScore = 0.0 if state.whoseTurn == self.playerId else 1.0
+
+        #This score is used to determine if a path is worth exploring.
+        #It is determined randomly from the first move.
+        #self.listAllLegalMoves scrambles the list of legal moves, so we get a
+        #random first move.
+        pivotScore = None
 
         # expand this node to find all child nodes
         for move in self.listAllLegalMoves(state):
 
             childState = self.successor(state, move)
 
-            children.append({'move': move, 'state': childState})
+            if pivotScore is None:
+                pivotScore = self.evaluateState(childState, depth)
+                children.append({'move': move, 'state': childState})
+            else:
+                #Check if child is worth exploring based on random pivot
+                if state.whoseTurn == self.playerId:
+                    if pivotScore <= self.evaluateState(childState, depth):
+                        children.append({'move': move, 'state': childState})
+                else:
+                    if pivotScore >= self.evaluateState(childState, depth):
+                        children.append({'move': move, 'state': childState})
 
             #Limit the branching factor.
             if len(children) > 15:
