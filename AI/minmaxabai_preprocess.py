@@ -1,5 +1,4 @@
 import random
-import copy
 import math
 
 from Player import *
@@ -28,9 +27,6 @@ DIST_WEIGHT = 5
 
 # weight for queen being away from places the worker must go and close to the bottom left
 QUEEN_LOCATION_WEIGHT = 20
-
-# weight for every ant having moved
-MOVED_WEIGHT = 1
 
 
 ##
@@ -138,6 +134,9 @@ class AIPlayer(Player):
 
         result.extend(listAllMovementMoves(state))
         result.append(Move(END, None, None))
+
+        random.shuffle(result)
+
         return result
 
 
@@ -163,13 +162,14 @@ class AIPlayer(Player):
 
         if depth == DEPTH_LIMIT:
             # Base case for depth limit
-            return {'move': Move(END, None, None), 'score': self.evaluateState(state), 'state': state}
+            return {'move': Move(END, None, None), 'score': self.evaluateState(state, depth), 'state': state}
 
         elif self.hasWon(state, state.whoseTurn):
             # Base case for victory
-            # Make the final score take into account how many moves it will take to reach this
-            # victory state. Winning this turn is better than winning next turn.
-            return {'move': Move(END, None, None), 'score': float(DEPTH_LIMIT + 1 - depth), 'state': state}
+            ## Make the final score take into account how many moves it will take to reach this
+            ## victory state. Winning this turn is better than winning next turn.
+            #return {'move': Move(END, None, None), 'score': float(DEPTH_LIMIT + 1 - depth), 'state': state}
+            return {'move': Move(END, None, None), 'score': self.evaluateState(state, depth), 'state': state}
 
         #This is the best move from the view of the current player (state.whoseTurn)
         children = []
@@ -184,9 +184,10 @@ class AIPlayer(Player):
 
             children.append({'move': move, 'score': estimatedChildScore, 'state': childState})
 
-        if len(children) > 10:
+        #Limit the branching factor.
+        if len(children) > 20:
             children.sort(key=lambda c: c['score'])
-            children = children[:6]
+            children = children[:10] #Reduce branching factor to compensate for sort time.
 
         for child in children:
 
@@ -416,6 +417,8 @@ class AIPlayer(Player):
         workerCountScore = 0
         if len(workers) == 1:
             workerCountScore = WORKER_WEIGHT
+        else:
+            workerCountScore = -WORKER_WEIGHT
 
         #################################################################################
         #Score the food we have
@@ -433,7 +436,7 @@ class AIPlayer(Player):
                 x, y = ant.coords
                 queenScore += self.preProcessMatrix[x][y]['foodDist']
                 queenScore += self.preProcessMatrix[x][y]['constrDist']
-                #Go to bottom left
+                #Gravitate toward bottom left (or top-right if player 1)
                 queenScore -= x
                 queenScore -= y
 
@@ -470,6 +473,7 @@ class AIPlayer(Player):
     # Parameters:
     #    hypotheticalState - The state to test for victory
     #    playerNo          - What player to test victory for
+    #
     # Returns:
     #    True if the player has won else False.
     ##
@@ -504,11 +508,12 @@ class AIPlayer(Player):
     #
     #Parameters:
     #   hypotheticalState - The state being considered by the AI for ranking.
+    #    depth            - What depth in the MiniMax tree this state is being evaluated at. (MUST be non-negative)
     #
     #Return:
     #   The move rated as the "best"
     ##
-    def evaluateState(self, hypotheticalState):
+    def evaluateState(self, hypotheticalState, depth=0):
 
         #Check if the game is over
         if self.hasWon(hypotheticalState, self.playerId):
@@ -519,7 +524,10 @@ class AIPlayer(Player):
         playerScore = self.getPlayerScore(hypotheticalState, self.playerId)
 
         #Normalize the score to be between 0.0 and 1.0
-        return (math.atan(playerScore/10000.) + math.pi/2) / math.pi
+        normalScore = (math.atan(playerScore/10000.) + math.pi/2) / math.pi
+
+        #Scale by depth
+        return normalScore / (depth + 1.)
 
 
     ##
