@@ -562,12 +562,11 @@ class AIPlayer(Player):
 
         playerScore = self.getPlayerScore(hypotheticalState, self.playerId)
 
-        #Normalize the score to be between 0.0 and 1.0
-        normalScore = (math.atan(playerScore/10000.) + math.pi/2) / math.pi
-
         #Scale by depth
-        return normalScore / (depth + 1.)
+        playerScore /= depth + 1.
 
+        #Normalize the score to be between 0.0 and 1.0
+        return (math.atan(playerScore/10000.) + math.pi/2) / math.pi
 
     ##
     #registerWin
@@ -577,6 +576,15 @@ class AIPlayer(Player):
     #   hasWon - True if the player won the game. False if they lost (Boolean)
     #
     def registerWin(self, hasWon):
+        print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+        print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+        print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+        print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+        print hasWon
+        print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+        print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+        print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+        print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
         self.didPreProcessing = False
 
 ##
