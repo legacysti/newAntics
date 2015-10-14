@@ -14,7 +14,7 @@ from AIPlayerUtils import *
 DEPTH_LIMIT = 3
 
 # weight for having at least one worker
-WORKER_WEIGHT = 100000
+WORKER_WEIGHT = 10000
 
 # weight for food
 FOOD_WEIGHT = 500
@@ -140,6 +140,12 @@ class AIPlayer(Player):
         return result
 
 
+    def printTree(self, state, depth):
+        if state.whoseTurn == self.playerId:
+            pass# "+", depth, (" " * depth),
+        else:
+            pass# "-", depth, (" " * depth),
+
     ##
     #expand
     #
@@ -161,8 +167,13 @@ class AIPlayer(Player):
     def expand(self, state, alpha=-float("inf"), beta=float("inf"), depth=0):
 
         if depth == DEPTH_LIMIT:
+            score = self.evaluateState(state, depth)
+
+            self.printTree(state, depth)
+            pass# "final best score", score
+
             # Base case for depth limit
-            return {'move': Move(END, None, None), 'score': self.evaluateState(state, depth), 'state': state}
+            return {'move': Move(END, None, None), 'score': score, 'state': state}
 
         elif self.hasWon(state, state.whoseTurn):
             # Base case for victory
@@ -180,39 +191,47 @@ class AIPlayer(Player):
         for move in self.listAllLegalMoves(state):
 
             childState = self.successor(state, move)
-            estimatedChildScore = self.evaluateState(state)
 
-            children.append({'move': move, 'score': estimatedChildScore, 'state': childState})
+            children.append({'move': move, 'state': childState})
 
-        #Limit the branching factor.
-        if len(children) > 20:
-            children.sort(key=lambda c: c['score'])
-            children = children[:10] #Reduce branching factor to compensate for sort time.
+            #Limit the branching factor.
+            if len(children) > 15:
+                break
 
         for child in children:
 
             move = child['move']
             childState = child['state']
 
+            self.printTree(state, depth)
+            pass# "trying ", moveTypeToStr(move.moveType), "with hypothetical score", child['score']
+
             # Recursive step to find real score instead of estimate
             score = self.expand(childState, alpha, beta, depth + 1)['score']
 
-            #update alpha and beta
+            #update alpha & beta and the best move & best score
             if state.whoseTurn == self.playerId:
                 if score > alpha:
                     alpha = score
                 if score > bestScore:
                     bestMove = move
                     bestScore = score
+                    self.printTree(state, depth)
+                    pass# "new best score", bestScore, "  ", moveTypeToStr(move.moveType)
             else:
                 if score < beta:
                     beta = score
                 if score < bestScore:
                     bestMove = move
                     bestScore = score
+                    self.printTree(state, depth)
+                    pass# (" " * depth), "new best score", bestScore, "  ", moveTypeToStr(move.moveType)
 
             if alpha >= beta:
                 break # nothing new can be determined from this
+
+        self.printTree(state, depth)
+        pass# "final best score", bestScore, "  ", moveTypeToStr(bestMove.moveType)
 
         # return this node
         return {'move': bestMove, 'score': bestScore}
@@ -262,7 +281,7 @@ class AIPlayer(Player):
             for x in xrange(10):
                 grid += str(self.preProcessMatrix[x][y]['foodDist'])
             grid += "\n"
-        print grid
+        pass# grid
 
         # Cache the hill coords for each player
         self.hillCoords = [
@@ -292,7 +311,7 @@ class AIPlayer(Player):
             self.preProcess(currentState)
 
         asciiPrintState(currentState)
-        print self.getPlayerScore(currentState, self.playerId, True)
+        pass# self.getPlayerScore(currentState, self.playerId, True)
 
         return self.expand(currentState)['move']
 
@@ -343,7 +362,7 @@ class AIPlayer(Player):
             #check if ant is depositing food
             if ant.carrying and self.antOnBuilding(state, ant):
                 ant.carrying = False
-                newState.inventories[self.playerId].foodCount += 1
+                newState.inventories[newState.whoseTurn].foodCount += 1
 
             #check if ant is picking up food
             if not ant.carrying:
@@ -355,7 +374,7 @@ class AIPlayer(Player):
             targets = [] #coordinates of attackable ants
             range = UNIT_STATS[ant.type][RANGE]
 
-            for ant in newState.inventories[1 - self.playerId].ants:
+            for ant in newState.inventories[1 - newState.whoseTurn].ants:
                 dist = math.sqrt((ant.coords[0] - ant.coords[0]) ** 2 +
                                  (ant.coords[1] - ant.coords[1]) ** 2)
                 if dist <= range:
@@ -370,23 +389,23 @@ class AIPlayer(Player):
 
                 if targetAnt.health <= 0:
                     #Remove the dead ant
-                    newState.inventories[1 - self.playerId].ants.remove(targetAnt)
+                    newState.inventories[1 - newState.whoseTurn].ants.remove(targetAnt)
 
             ant.hasMoved = True
 
         else: #Move type BUILD
             if move.buildType in (WORKER, DRONE, SOLDIER, R_SOLDIER):
                 #Build ant on hill
-                ant = Ant(move.coordList[0], move.buildType, self.playerId)
-                newState.inventories[self.playerId].ants.append(ant)
+                ant = Ant(move.coordList[0], move.buildType, newState.whoseTurn)
+                newState.inventories[newState.whoseTurn].ants.append(ant)
 
-                newState.inventories[self.playerId].foodCount -= UNIT_STATS[move.buildType][COST]
+                newState.inventories[newState.whoseTurn].foodCount -= UNIT_STATS[move.buildType][COST]
             else:
                 #build new building
-                building = Building(move.coordList[0], move.buildType, self.playerId)
-                newState.inventories[self.playerId].constrs.append(building)
+                building = Building(move.coordList[0], move.buildType, newState.whoseTurn)
+                newState.inventories[newState.whoseTurn].constrs.append(building)
 
-                newState.inventories[self.playerId].foodCount -= CONSTR_STATS[move.buildType][BUILD_COST]
+                newState.inventories[newState.whoseTurn].foodCount -= CONSTR_STATS[move.buildType][BUILD_COST]
 
         return newState
 
@@ -411,6 +430,10 @@ class AIPlayer(Player):
 
         workers = getAntList(hypotheticalState, playerNo, (WORKER,))
 
+        #DEBUG
+        if not debug and len(workers) > 1:
+            return -float("inf")
+
         #################################################################################
         #Score having exactly one worker
 
@@ -418,7 +441,7 @@ class AIPlayer(Player):
         if len(workers) == 1:
             workerCountScore = WORKER_WEIGHT
         else:
-            workerCountScore = -WORKER_WEIGHT
+            workerCountScore = -abs((len(workers) - 1) * WORKER_WEIGHT)
 
         #################################################################################
         #Score the food we have
@@ -459,7 +482,7 @@ class AIPlayer(Player):
             else:
                 distScore -= DIST_WEIGHT * self.preProcessMatrix[x][y]['foodDist']
 
-        score = foodScore + distScore + carryScore + queenScore +  workerCountScore
+        score = foodScore + distScore + carryScore + queenScore + workerCountScore
 
         if debug:
             return {'f': foodScore, 'd': distScore, 'c': carryScore,
@@ -562,29 +585,29 @@ def unitTest1():
     player = AIPlayer(0)
     newState = player.successor(state, Move(MOVE_ANT, ((0,0), (0,1), (0,2)), None))
     if tuple(newState.inventories[0].ants[0].coords) != (0, 2):
-        print "didn't move ant"
+        pass# "didn't move ant"
         return False
 
     #test adding a building
     newState = player.successor(state, Move(BUILD, ((3,3),), TUNNEL))
 
     if len(newState.inventories[0].constrs) == 0:
-        print "didn't create construction"
+        pass# "didn't create construction"
         return False
 
     if newState.inventories[0].constrs[0].type != TUNNEL:
-        print "created wrong type of construction"
+        pass# "created wrong type of construction"
         return False
 
     if tuple(newState.inventories[0].constrs[0].coords) != (3, 3):
-        print "created construction at wrong place"
+        pass# "created construction at wrong place"
         return False
 
     if newState.inventories[0].foodCount != 7:
-        print "didn't subtract food cost"
+        pass# "didn't subtract food cost"
         return False
 
     return True
 
 #if unitTest1():
-#    print "Unit Test 1 passed!"
+#    pass# "Unit Test 1 passed!"
