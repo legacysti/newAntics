@@ -1,3 +1,5 @@
+#Coded by Stephen Robinson & Matthew Ong
+
 import random
 import math
 
@@ -28,6 +30,11 @@ DIST_WEIGHT = 5
 # weight for queen being away from places the worker must go and close to the bottom left
 QUEEN_LOCATION_WEIGHT = 20
 
+# used to scale down the player score
+SCORE_SCALE = 1000.
+
+# branching factor limit. If it is exceeded, it will cull the less good paths.
+BRANCHING_FACTOR = 12
 
 ##
 #AIPlayer
@@ -48,9 +55,10 @@ class AIPlayer(Player):
     #   inputPlayerId - The id to give the new player (int)
     ##
     def __init__(self, inputPlayerId):
-        super(AIPlayer,self).__init__(inputPlayerId, "prepro Minumus Maximus")
+        super(AIPlayer,self).__init__(inputPlayerId, "Minumus Maximus")
 
         self.didPreProcessing = False
+        #Calculate these before starting the game to speed up.
         self.preProcessMatrix = None
         self.hillCoords = None
         self.foodCoords = None
@@ -140,12 +148,6 @@ class AIPlayer(Player):
         return result
 
 
-    def printTree(self, state, depth):
-        if state.whoseTurn == self.playerId:
-            pass# "+", depth, (" " * depth),
-        else:
-            pass# "-", depth, (" " * depth),
-
     ##
     #expand
     #
@@ -169,9 +171,6 @@ class AIPlayer(Player):
         if depth == DEPTH_LIMIT:
             score = self.evaluateState(state, depth)
 
-            self.printTree(state, depth)
-            pass# "final best score", score
-
             # Base case for depth limit
             return {'move': Move(END, None, None), 'score': score, 'state': state}
 
@@ -190,7 +189,7 @@ class AIPlayer(Player):
         #This score is used to determine if a path is worth exploring.
         #It is determined randomly from the first move.
         #self.listAllLegalMoves scrambles the list of legal moves, so we get a
-        #random first move.
+        #random first move for our pivot.
         pivotScore = None
 
         # expand this node to find all child nodes
@@ -211,16 +210,13 @@ class AIPlayer(Player):
                         children.append({'move': move, 'state': childState})
 
             #Limit the branching factor.
-            if len(children) > 15:
+            if len(children) > BRANCHING_FACTOR:
                 break
 
         for child in children:
 
             move = child['move']
             childState = child['state']
-
-            self.printTree(state, depth)
-            pass# "trying ", moveTypeToStr(move.moveType), "with hypothetical score", child['score']
 
             # Recursive step to find real score instead of estimate
             score = self.expand(childState, alpha, beta, depth + 1)['score']
@@ -232,22 +228,15 @@ class AIPlayer(Player):
                 if score > bestScore:
                     bestMove = move
                     bestScore = score
-                    self.printTree(state, depth)
-                    pass# "new best score", bestScore, "  ", moveTypeToStr(move.moveType)
             else:
                 if score < beta:
                     beta = score
                 if score < bestScore:
                     bestMove = move
                     bestScore = score
-                    self.printTree(state, depth)
-                    pass# (" " * depth), "new best score", bestScore, "  ", moveTypeToStr(move.moveType)
 
             if alpha >= beta:
                 break # nothing new can be determined from this
-
-        self.printTree(state, depth)
-        pass# "final best score", bestScore, "  ", moveTypeToStr(bestMove.moveType)
 
         # return this node
         return {'move': bestMove, 'score': bestScore}
@@ -297,7 +286,6 @@ class AIPlayer(Player):
             for x in xrange(10):
                 grid += str(self.preProcessMatrix[x][y]['foodDist'])
             grid += "\n"
-        pass# grid
 
         # Cache the hill coords for each player
         self.hillCoords = [
@@ -324,10 +312,7 @@ class AIPlayer(Player):
     def getMove(self, currentState):
 
         if not self.didPreProcessing:
-            self.preProcess(currentState)
-
-        asciiPrintState(currentState)
-        pass# self.getPlayerScore(currentState, self.playerId, True)
+            self.preProcess(currentState) #Do some calculations at the start of the game.
 
         return self.expand(currentState)['move']
 
@@ -446,18 +431,12 @@ class AIPlayer(Player):
 
         workers = getAntList(hypotheticalState, playerNo, (WORKER,))
 
-        #DEBUG
-        if not debug and len(workers) > 1:
-            return -float("inf")
-
         #################################################################################
         #Score having exactly one worker
 
         workerCountScore = 0
         if len(workers) == 1:
             workerCountScore = WORKER_WEIGHT
-        else:
-            workerCountScore = -abs((len(workers) - 1) * WORKER_WEIGHT)
 
         #################################################################################
         #Score the food we have
@@ -544,6 +523,7 @@ class AIPlayer(Player):
     #
     #Description: Examines a GameState and ranks how "good" that state is for the agent whose turn it is.
     #              A rating is given on the players state. 1.0 is if the agent has won; 0.0 if the enemy has won.
+    #              The rating is scaled down based on the depth is was found at.
     #
     #Parameters:
     #   hypotheticalState - The state being considered by the AI for ranking.
@@ -556,17 +536,14 @@ class AIPlayer(Player):
 
         #Check if the game is over
         if self.hasWon(hypotheticalState, self.playerId):
-            return 1.0
+            return 1.0 / (depth + 1.) #Scale
         elif self.hasWon(hypotheticalState, 1 - self.playerId):
             return 0.0
 
         playerScore = self.getPlayerScore(hypotheticalState, self.playerId)
 
-        #Scale by depth
-        playerScore /= depth + 1.
-
         #Normalize the score to be between 0.0 and 1.0
-        return (math.atan(playerScore/10000.) + math.pi/2) / math.pi
+        return (math.atan(playerScore/SCORE_SCALE) + math.pi/2) / math.pi / (depth + 1.)
 
     ##
     #registerWin
@@ -576,62 +553,4 @@ class AIPlayer(Player):
     #   hasWon - True if the player won the game. False if they lost (Boolean)
     #
     def registerWin(self, hasWon):
-        print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-        print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-        print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-        print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-        print hasWon
-        print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-        print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-        print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-        print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
         self.didPreProcessing = False
-
-##
-# unitTest1
-# Description: Tests the AIPlayer.successor method
-# Returns:
-#    False if anything is wrong else True
-##
-def unitTest1():
-    board = [[Location((col, row)) for row in xrange(0,BOARD_LENGTH)] for col in xrange(0,BOARD_LENGTH)]
-    p1Inventory = Inventory(PLAYER_ONE, [], [], 10)
-    p2Inventory = Inventory(PLAYER_TWO, [], [], 0)
-    neutralInventory = Inventory(NEUTRAL, [], [], 0)
-
-    state = GameState(board, [p1Inventory, p2Inventory, neutralInventory], MENU_PHASE, PLAYER_ONE)
-
-    #Add an ant to move
-    ant = Ant((0,0), WORKER, 0)
-    board[0][0].ant = ant
-    p1Inventory.ants.append(ant)
-
-    player = AIPlayer(0)
-    newState = player.successor(state, Move(MOVE_ANT, ((0,0), (0,1), (0,2)), None))
-    if tuple(newState.inventories[0].ants[0].coords) != (0, 2):
-        pass# "didn't move ant"
-        return False
-
-    #test adding a building
-    newState = player.successor(state, Move(BUILD, ((3,3),), TUNNEL))
-
-    if len(newState.inventories[0].constrs) == 0:
-        pass# "didn't create construction"
-        return False
-
-    if newState.inventories[0].constrs[0].type != TUNNEL:
-        pass# "created wrong type of construction"
-        return False
-
-    if tuple(newState.inventories[0].constrs[0].coords) != (3, 3):
-        pass# "created construction at wrong place"
-        return False
-
-    if newState.inventories[0].foodCount != 7:
-        pass# "didn't subtract food cost"
-        return False
-
-    return True
-
-#if unitTest1():
-#    pass# "Unit Test 1 passed!"
