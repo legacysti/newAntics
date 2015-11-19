@@ -62,9 +62,13 @@ class AIPlayer(Player):
         self.preProcessMatrix = None
         self.hillCoords = None
         self.foodCoords = None
+        self.nodes1 = []
+        self.inputs = []
+        self.biasWeights = []
         self.weights = []
-        for i in range (0,16):
+        for i in range (0,8):
             self.weights.append(random.uniform(-1,1))
+            self.biasWeights.append(random.uniform(-1,1))
         print "weight array:" + `self.weights`
 
     ##
@@ -316,7 +320,7 @@ class AIPlayer(Player):
 
         if not self.didPreProcessing:
             self.preProcess(currentState) #Do some calculations at the start of the game.
-
+        self.printme(currentState, self.playerId)
         return self.expand(currentState)['move']
 
 
@@ -418,13 +422,14 @@ class AIPlayer(Player):
         workers = getAntList(currentState, playerNo, (WORKER,))
         queens = getAntList(currentState, playerNo, (QUEEN,))
         theirQueen = getAntList(currentState, playerNo -1, (QUEEN,))
-
+        print "###########inputs:############"
         #################################################################################
         #Score having exactly one worker
 
         workerCountScore = 0.0
         if len(workers) == 1:
             workerCountScore = 1.0
+        self.inputs.append(workerCountScore)
 
         print "workerCountScore:" + `workerCountScore`
 
@@ -432,19 +437,26 @@ class AIPlayer(Player):
         #Score the food we have
 
         foodScore = (currentState.inventories[playerNo].foodCount) / 11.0       # * FOOD_WEIGHT
+        self.inputs.append(foodScore)
+
         print "our food score:" + `foodScore`
 
         #Score the food enemy has
         foodScoreEnemy = (currentState.inventories[playerNo -1].foodCount) / 11.0
+        self.inputs.append(foodScoreEnemy)
 
         print "their food score:" + `foodScoreEnemy`
         #################################################################################
         #queen health
 
         queenHealth = (queens[0].health) / 4.0
+        self.inputs.append(queenHealth)
+
         print "our queen health:" + `queenHealth`
         #enemy queen health
         theirQueenHealth = (theirQueen[0].health) / 4.0
+        self.inputs.append(theirQueenHealth)
+
         print "their queen score:" + `theirQueenHealth`
         #################################################################################
         #Score queen being off of anthill and food
@@ -455,6 +467,7 @@ class AIPlayer(Player):
             queenScore = 1.0
         elif not self.preProcessMatrix[x][y]['constrDist'] == 0:
             queenScore = 1.0
+        self.inputs.append(queenScore)
 
         print "if queen on const:" + `queenScore`
         #################################################################################
@@ -471,11 +484,21 @@ class AIPlayer(Player):
                 distScore = 1-((self.preProcessMatrix[x][y]['constrDist']) / 18.0)
             else:
                 distScore = 1-((self.preProcessMatrix[x][y]['foodDist']) / 18.0)
+        self.inputs.append(distScore)
+        self.inputs.append(carryScore)
 
         print "distance score:" + `distScore`
         print "carry score:" + `carryScore`
 
+        print "input array:" + `self.inputs`
 
+        for j in range (0,8):
+            nodeValue = self.biasWeights[j]
+            for i in range (0,8):
+                nodeValue += (self.inputs[i] * self.weights[i])
+            self.nodes1.append(nodeValue)
+
+        print "node array:" + `self.nodes1`
 
     ##
     # getPlayerScore
@@ -605,7 +628,6 @@ class AIPlayer(Player):
         elif self.hasWon(hypotheticalState, 1 - self.playerId):
             return 0.0
         playerScore = self.getPlayerScore(hypotheticalState, self.playerId)
-        self.printme(hypotheticalState, self.playerId)
 
         #Normalize the score to be between 0.0 and 1.0
         return (math.atan(playerScore/SCORE_SCALE) + math.pi/2) / math.pi / (depth + 1.)
