@@ -36,6 +36,9 @@ SCORE_SCALE = 1000.
 # branching factor limit. If it is exceeded, it will cull the less good paths.
 BRANCHING_FACTOR = 12
 
+# learning rate
+LEARNING_RATE = 0.5
+
 ##
 #AIPlayer
 #Description: The responsibility of this class is to interact with the game by
@@ -55,20 +58,24 @@ class AIPlayer(Player):
     #   inputPlayerId - The id to give the new player (int)
     ##
     def __init__(self, inputPlayerId):
-        super(AIPlayer,self).__init__(inputPlayerId, "The Conscious Ant")
+        super(AIPlayer,self).__init__(inputPlayerId, "The Conscious Ant PART 2")
 
         self.didPreProcessing = False
         #Calculate these before starting the game to speed up.
         self.preProcessMatrix = None
         self.hillCoords = None
         self.foodCoords = None
-        self.nodes1 = []
-        self.inputs = []
-        self.biasWeights = []
+        self.inputsArray = []
         self.weights = []
-        for i in range (0,8):
+        self.finalWeights = []
+        self.neuralArray = []
+        self.finalNode = 0
+        for i in range(0, 16):
+            self.neuralArray.append(0)
+        for i in range(0, 128):
             self.weights.append(random.uniform(-1,1))
-            self.biasWeights.append(random.uniform(-1,1))
+        for i in range(0, 16):
+            self.finalWeights.append(random.uniform(-1,1))
         print "weight array:" + `self.weights`
 
     ##
@@ -320,7 +327,11 @@ class AIPlayer(Player):
 
         if not self.didPreProcessing:
             self.preProcess(currentState) #Do some calculations at the start of the game.
-        self.printme(currentState, self.playerId)
+
+        score = self.expand(currentState)['score']
+
+        self.printme(currentState, self.playerId, score)
+
         return self.expand(currentState)['move']
 
 
@@ -417,7 +428,7 @@ class AIPlayer(Player):
 
         return newState
 
-    def printme(self, currentState, playerNo, debug=False):
+    def printme(self, currentState, playerNo, minmaxscore, debug=False):
 
         workers = getAntList(currentState, playerNo, (WORKER,))
         queens = getAntList(currentState, playerNo, (QUEEN,))
@@ -429,7 +440,7 @@ class AIPlayer(Player):
         workerCountScore = 0.0
         if len(workers) == 1:
             workerCountScore = 1.0
-        self.inputs.append(workerCountScore)
+        self.inputsArray.append(workerCountScore)
 
         print "workerCountScore:" + `workerCountScore`
 
@@ -437,25 +448,25 @@ class AIPlayer(Player):
         #Score the food we have
 
         foodScore = (currentState.inventories[playerNo].foodCount) / 11.0       # * FOOD_WEIGHT
-        self.inputs.append(foodScore)
+        self.inputsArray.append(foodScore)
 
         print "our food score:" + `foodScore`
 
         #Score the food enemy has
         foodScoreEnemy = (currentState.inventories[playerNo -1].foodCount) / 11.0
-        self.inputs.append(foodScoreEnemy)
+        self.inputsArray.append(foodScoreEnemy)
 
         print "their food score:" + `foodScoreEnemy`
         #################################################################################
         #queen health
 
         queenHealth = (queens[0].health) / 4.0
-        self.inputs.append(queenHealth)
+        self.inputsArray.append(queenHealth)
 
         print "our queen health:" + `queenHealth`
         #enemy queen health
         theirQueenHealth = (theirQueen[0].health) / 4.0
-        self.inputs.append(theirQueenHealth)
+        self.inputsArray.append(theirQueenHealth)
 
         print "their queen score:" + `theirQueenHealth`
         #################################################################################
@@ -467,7 +478,7 @@ class AIPlayer(Player):
             queenScore = 1.0
         elif not self.preProcessMatrix[x][y]['constrDist'] == 0:
             queenScore = 1.0
-        self.inputs.append(queenScore)
+        self.inputsArray.append(queenScore)
 
         print "if queen on const:" + `queenScore`
         #################################################################################
@@ -484,25 +495,56 @@ class AIPlayer(Player):
                 distScore = 1-((self.preProcessMatrix[x][y]['constrDist']) / 18.0)
             else:
                 distScore = 1-((self.preProcessMatrix[x][y]['foodDist']) / 18.0)
-        self.inputs.append(distScore)
-        self.inputs.append(carryScore)
+        self.inputsArray.append(distScore)
+        self.inputsArray.append(carryScore)
 
         print "distance score:" + `distScore`
         print "carry score:" + `carryScore`
 
-        print "input array:" + `self.inputs`
+        self.neuralNode()
+        self.backPropagation(minmaxscore)
 
-        for j in range (0,8):
-            nodeValue = self.biasWeights[j]
-            for i in range (0,8):
-                nodeValue += (self.inputs[i] * self.weights[i])
-            self.nodes1.append(nodeValue)
-            self.nodes2 = 1/(1+math.e**int((self.nodes1[i])))
 
-        # print "node array:" + `self.nodes1`
+    #creates node from inputs and weights
+    #calculates final node
+    #output - final node
+    def neuralNode(self):
+        for i in range(0, len(self.neuralArray)):
+            #if need TODO add bias here
+            for j in range(0, 8):
+                self.neuralArray[i] += (self.inputsArray[j] * self.weights[(i*8)+j])
+            self.neuralArray[i] = 1/(1+math.e**int((-self.neuralArray[i])))
 
-        # for node in self.nodes1
-            # self.nodes2 = 1/(1+math.e**int((node))
+        print "neural array" + `self.neuralArray`
+
+        for i in range(0, len(self.neuralArray)):
+			self.finalNode += (self.neuralArray[i] * self.finalWeights[i])
+        self.finalNode = 1/(1+math.e**int((-self.finalNode)))
+
+    #take final node
+    #calculate new weights used with neuralArray
+    def backPropagation(self, target):
+        error = target - self.finalNode
+        errorTermFinal = ((self.finalNode)*(1-self.finalNode)*error)
+
+        print "final error" + `error`
+        print "final error term" + `errorTermFinal`
+
+        errorOutArray = []
+        for i in self.finalWeights:
+            errorOutArray.append(i*errorTermFinal)
+        print "errorOutArray:" + `errorOutArray`
+
+        errorTermOutArray = []
+        for i in range (0, len(self.neuralArray)):
+            errorTermOutArray.append(self.neuralArray[i]*(1-self.neuralArray[i])*errorOutArray[i])
+        print "errorTermOutArray:" + `errorTermOutArray`
+
+        for i in range (0, len(self.neuralArray)):
+            for j in range (0,8):
+                self.weights[(i*8)+j] = self.weights[(i*8)+j] + LEARNING_RATE * errorTermOutArray[i] * self.inputsArray[j]
+        print "new weights" + `self.weights`
+
     ##
     # getPlayerScore
     # Description: takes a state and player number and returns a number estimating that
