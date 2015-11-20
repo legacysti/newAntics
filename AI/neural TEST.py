@@ -331,7 +331,7 @@ class AIPlayer(Player):
         #score = self.expand(currentState)['score']
         score = 0
 
-        self.printme(currentState, self.playerId, score)
+        # self.neuralNetwork(currentState, self.playerId, score)          Hidden - move to
 
         return self.expand(currentState)['move']
 
@@ -429,7 +429,7 @@ class AIPlayer(Player):
 
         return newState
 
-    def printme(self, currentState, playerNo, minmaxscore, debug=False):
+    def neuralNetwork(self, currentState, playerNo, minmaxscore, debug=False):
 
         workers = getAntList(currentState, playerNo, (WORKER,))
         queens = getAntList(currentState, playerNo, (QUEEN,))
@@ -502,7 +502,7 @@ class AIPlayer(Player):
         print "distance score:" + `distScore`
         print "carry score:" + `carryScore`
 
-        self.neuralNode()
+        return self.neuralNode()
         #self.backPropagation(minmaxscore)
 
 
@@ -521,6 +521,8 @@ class AIPlayer(Player):
         for i in range(0, len(self.neuralArray)):
 			self.finalNode += (self.neuralArray[i] * self.finalWeights[i])
         self.finalNode = 1/(1+math.e**int((-self.finalNode)))
+
+        return self.finalNode
 
     #take final node
     #calculate new weights used with neuralArray
@@ -677,9 +679,12 @@ class AIPlayer(Player):
             return 1.0 / (depth + 1.) #Scale
         elif self.hasWon(hypotheticalState, 1 - self.playerId):
             return 0.0
-        playerScore = self.getPlayerScore(hypotheticalState, self.playerId)
-
+        # playerScore = self.getPlayerScore(hypotheticalState, self.playerId)   replaced with new neural network
+        score = 0
+        playerScore = self.neuralNetwork(hypotheticalState, self.playerId, score) #score perameter is not needed due to not calling the back propagation method
         #Normalize the score to be between 0.0 and 1.0
+        print "player score: " + `playerScore`
+
         return (math.atan(playerScore/SCORE_SCALE) + math.pi/2) / math.pi / (depth + 1.)
 
     ##
