@@ -61,7 +61,8 @@ class AIPlayer(Player):
         self.preProcessMatrix = None
         self.hillCoords = None
         self.foodCoords = None
-        self.utilArray = []
+        self.utilDic = {'state': None, 'utility': None}
+
 
 
 
@@ -84,18 +85,134 @@ class AIPlayer(Player):
 
         consolidatedState = GameState(newBoard, newInventories, newPhase, newWhoseTrurn)
 
+        queen = anticState.inventories[anticState.whoseTurn].getQueen()
+
+        score = None
+
         return consolidatedState
-
-        consolDic = {'state': consolidatedState, 'utility': score}
-
 
     def save(self):
         with open( "save", "wb" ) as f:
-            pickle.dump( self.utilArray, f )
+            pickle.dump( self.utilDic, f )
 
     def load(self):
         with open( "save", "rb" ) as f:
-            self.utilArray = pickle.load(f)
+            self.utilDic = pickle.load(f)
+
+    def reward(self, consolidatedState):
+        if consolidatedState.inventories[0].foodCount >= 11:
+            return 1.0
+        elif consolidatedState.inventories[0].getQueen() is None:
+            return -1.0
+        return -0.01
+
+
+    ##
+    # getFutureState
+    #
+    # Description: Simulates and returns the new state that would exist after
+    #   a move is applied to current state
+    #
+    # Parameters:
+    #   currentState - The game's current state (GameState)
+    #   move - The Move that is to be simulated
+    #
+    # Return: The simulated future state (GameState)
+    ##
+    def getFutureState(self, currentState, move):
+        # create a bare-bones copy of the state to modify
+        newState = currentState.fastclone()
+
+        # get references to the player inventories
+        playerInv = newState.inventories[newState.whoseTurn]
+        enemyInv = newState.inventories[1 - newState.whoseTurn]
+
+        if move.moveType == BUILD:
+        # BUILD MOVE
+            if move.buildType < 0:
+                # building a construction
+                playerInv.foodCount -= CONSTR_STATS[move.buildType][BUILD_COST]
+                playerInv.constrs.append(Construction(move.coordList[0], move.buildType))
+            else:
+                # building an ant
+                playerInv.foodCount -= UNIT_STATS[move.buildType][COST]
+                playerInv.ants.append(Ant(move.coordList[0], move.buildType, newState.whoseTurn))
+
+        elif move.moveType == MOVE_ANT:
+        # MOVE AN ANT
+            # get a reference to the ant
+            ant = getAntAt(newState, move.coordList[0])
+
+            # update the ant's location after the move
+            ant.coords = move.coordList[-1]
+            ant.hasMoved = True
+
+            # get a reference to a potential construction at the destination coords
+            constr = getConstrAt(newState, move.coordList[-1])
+
+            # check to see if a worker ant is on a food or tunnel or hill and act accordingly
+            if constr and ant.type == WORKER:
+                # if destination is food and ant can carry, pick up food
+                if constr.type == FOOD:
+                    if not ant.carrying:
+                        ant.carrying = True
+                # if destination is dropoff structure and and is carrying, drop off food
+                elif constr.type == TUNNEL or constr.type == ANTHILL:
+                    if ant.carrying:
+                        ant.carrying = False
+                        playerInv.foodCount += 1
+
+            # get a list of the coordinates of the enemy's ants
+            enemyAntCoords = [enemyAnt.coords for enemyAnt in enemyInv.ants]
+
+            # contains the coordinates of ants that the 'moving' ant can attack
+            validAttacks = []
+
+            # go through the list of enemy ant locations and check if
+            # we can attack that spot, and if so add it to a list of
+            # valid attacks (one of which will be chosen at random)
+            for coord in enemyAntCoords:
+                if UNIT_STATS[ant.type][RANGE] ** 2 >= abs(ant.coords[0] - coord[0]) ** 2 + abs(ant.coords[1] - coord[1]) ** 2:
+                    validAttacks.append(coord)
+
+            # if we can attack, pick a random attack and do it
+            if validAttacks:
+                enemyAnt = getAntAt(newState, random.choice(validAttacks))
+                attackStrength = UNIT_STATS[ant.type][ATTACK]
+
+                if enemyAnt.health <= attackStrength:
+                    # just to be safe, set the health to 0
+                    enemyAnt.health = 0
+                    # remove the enemy ant from their inventory
+                    enemyInv.ants.remove(enemyAnt)
+                else:
+                    # lower the enemy ant's health because they were attacked
+                    enemyAnt.health -= attackStrength
+
+        # return the modified copy of the original state
+        return newState
+
+
+    def getFutureMove(self,currentState):
+        allMoves = self.listAllLegalMoves(currentState)
+
+        #find best move
+        consolidatedStates = [] #list of future consolidated states of all moves from currentState
+        for m in allMoves:
+            for s in self.consolidate(self.getFutureState(currentState, m)):
+                consolidatedStates.append(zip(s,m))
+
+        calculatedStates = []
+        for s,m in consolidatedStates:
+            if s in self.utilDic:
+                calculatedStates.append((self.utilDic[s],m))
+
+        if len(calculatedStates) > 0:
+            best = max(calculatedStates)[1]
+            return best
+        #return a random move
+        else:
+            return random.choice(moves)
 
     ##
     #getPlacement
@@ -116,8 +233,8 @@ class AIPlayer(Player):
         #implemented by students to return their next move
         if currentState.phase == SETUP_PHASE_1:    #stuff on my side
 
-            if os.path.isfile(save): #load previous array
-                self.utilArray = self.load()
+            if os.path.isfile("save"): #load previous array
+                self.utilDic = self.load()
 
             numToPlace = 11
             moves = []
@@ -254,11 +371,22 @@ class AIPlayer(Player):
     #Return: The Move to be made
     ##
     def getMove(self, currentState):
-
         if not self.didPreProcessing:
             self.preProcess(currentState) #Do some calculations at the start of the game.
 
-        return self.expand(currentState)['move']
+        newMove = self.getFutureMove(currentState)
+
+        consolidatedState = self.consolidate(currentState)
+
+        if consolidatedState in self.utilDic:
+            util = self.utilDic[consolidatedState]
+        else:
+            # state not found, so add it
+            util = self.getReward(simpleState)
+            self.stateUtils[simpleState] = (util, 1)
+            stateCount = 1
+
+        return 
 
 
     ##
@@ -279,215 +407,6 @@ class AIPlayer(Player):
         buildings = getConstrList(state, state.whoseTurn, (ANTHILL, TUNNEL))
         return tuple(ant.coords) in (tuple(b.coords) for b in buildings)
 
-
-    ##
-    #successor
-    #
-    #Description: Determine what the agent's state would look like after a given move.
-    #             We Will assume that all Move objects passed are valid.
-    #
-    #Parameters:
-    #   state - A clone of the theoretical state given (GameState)
-    #   move - a list of all move objects passed (Move)
-    #
-    #Returns:
-    #   What the agent's state would be like after a given move.
-    ##
-    def successor(self, state, move):
-        newState = state.fastclone()
-
-        if move.moveType == END:
-            newState.whoseTurn = 1 - state.whoseTurn
-            return newState
-
-        elif move.moveType == MOVE_ANT:
-            ant = getAntAt(newState, move.coordList[0])
-            ant.coords = move.coordList[-1]
-
-            #check if ant is depositing food
-            if ant.carrying and self.antOnBuilding(state, ant):
-                ant.carrying = False
-                newState.inventories[newState.whoseTurn].foodCount += 1
-
-            #check if ant is picking up food
-            if not ant.carrying:
-                if tuple(ant.coords) in self.foodCoords:
-                    ant.carrying = True
-
-
-            #check if ant can attack
-            targets = [] #coordinates of attackable ants
-            range = UNIT_STATS[ant.type][RANGE]
-
-            for ant in newState.inventories[1 - newState.whoseTurn].ants:
-                dist = math.sqrt((ant.coords[0] - ant.coords[0]) ** 2 +
-                                 (ant.coords[1] - ant.coords[1]) ** 2)
-                if dist <= range:
-                    #target is in range and may be attacked
-                    targets.append(ant.coords)
-
-            if targets:
-                #Attack the ant chosen by the AI
-                target = self.getAttack(newState, ant, targets)
-                targetAnt = getAntAt(newState, target)
-                targetAnt.health -= UNIT_STATS[ant.type][ATTACK]
-
-                if targetAnt.health <= 0:
-                    #Remove the dead ant
-                    newState.inventories[1 - newState.whoseTurn].ants.remove(targetAnt)
-
-            ant.hasMoved = True
-
-        else: #Move type BUILD
-            if move.buildType in (WORKER, DRONE, SOLDIER, R_SOLDIER):
-                #Build ant on hill
-                ant = Ant(move.coordList[0], move.buildType, newState.whoseTurn)
-                newState.inventories[newState.whoseTurn].ants.append(ant)
-
-                newState.inventories[newState.whoseTurn].foodCount -= UNIT_STATS[move.buildType][COST]
-            else:
-                #build new building
-                building = Building(move.coordList[0], move.buildType, newState.whoseTurn)
-                newState.inventories[newState.whoseTurn].constrs.append(building)
-
-                newState.inventories[newState.whoseTurn].foodCount -= CONSTR_STATS[move.buildType][BUILD_COST]
-
-        return newState
-
-
-
-    ##
-    # getPlayerScore
-    # Description: takes a state and player number and returns a number estimating that
-    # player's score.
-    #
-    # Parameters:
-    #    hypotheticalState - The state to score
-    #    playerNo          - The player number to determine the score for
-    #    debug             - If this is true then the score will be returned as a dict
-    # Returns:
-    #    If not debugging:
-    #      A float representing that player's score
-    #    If debugging
-    #      A dict containing the components of the player's score along with the score
-    ##
-    def getPlayerScore(self, hypotheticalState, playerNo, debug=False):
-
-        workers = getAntList(hypotheticalState, playerNo, (WORKER,))
-
-        #################################################################################
-        #Score having exactly one worker
-
-        workerCountScore = 0
-        if len(workers) == 1:
-            workerCountScore = WORKER_WEIGHT
-
-        #################################################################################
-        #Score the food we have
-
-        foodScore = hypotheticalState.inventories[playerNo].foodCount * FOOD_WEIGHT
-
-
-        #################################################################################
-        #Score queen being off of anthill and food
-
-        queenScore = 0
-
-        for ant in hypotheticalState.inventories[playerNo].ants:
-            if ant.type == QUEEN:
-                x, y = ant.coords
-                queenScore += self.preProcessMatrix[x][y]['foodDist']
-                queenScore += self.preProcessMatrix[x][y]['constrDist']
-                #Gravitate toward bottom left (or top-right if player 1)
-                queenScore -= x
-                queenScore -= y
-
-                queenScore *= QUEEN_LOCATION_WEIGHT
-
-                break
-
-
-        #################################################################################
-        #Score the workers for getting to their goals and carrying food
-
-        distScore = 0
-        carryScore = 0
-
-        for worker in workers:
-            x, y = worker.coords
-            if worker.carrying:
-                carryScore += CARRY_WEIGHT
-                distScore -= DIST_WEIGHT * self.preProcessMatrix[x][y]['constrDist']
-            else:
-                distScore -= DIST_WEIGHT * self.preProcessMatrix[x][y]['foodDist']
-
-        score = foodScore + distScore + carryScore + queenScore + workerCountScore
-
-        if debug:
-            return {'f': foodScore, 'd': distScore, 'c': carryScore,
-                    'q': queenScore, 'w': workerCountScore, 'S': score}
-        else:
-            return score
-
-    ##
-    # hasWon
-    # Description: Takes a GameState and a player number and returns if that player has won
-    # Parameters:
-    #    hypotheticalState - The state to test for victory
-    #    playerNo          - What player to test victory for
-    #
-    # Returns:
-    #    True if the player has won else False.
-    ##
-    def hasWon(self, hypotheticalState, playerNo):
-
-        #Check if enemy anthill has been captured
-        for constr in hypotheticalState.inventories[1 - playerNo].constrs:
-            if constr.type == ANTHILL and constr.captureHealth == 1:
-                #This anthill will be destroyed if there is an opposing ant sitting on it
-                for ant in hypotheticalState.inventories[playerNo].ants:
-                    if tuple(ant.coords) == tuple(constr.coords):
-                        return True
-                break
-
-        #Check if enemy queen is dead
-        for ant in hypotheticalState.inventories[1 - playerNo].ants:
-            if ant.type == QUEEN and ant.health == 0:
-                return True
-
-        #Check if we have 11 food
-        if hypotheticalState.inventories[playerNo].foodCount >= 11:
-            return True
-
-        return False
-
-
-    ##
-    #evaluateState
-    #
-    #Description: Examines a GameState and ranks how "good" that state is for the agent whose turn it is.
-    #              A rating is given on the players state. 1.0 is if the agent has won; 0.0 if the enemy has won.
-    #              The rating is scaled down based on the depth is was found at.
-    #
-    #Parameters:
-    #   hypotheticalState - The state being considered by the AI for ranking.
-    #    depth            - What depth in the MiniMax tree this state is being evaluated at. (MUST be non-negative)
-    #
-    #Return:
-    #   The move rated as the "best"
-    ##
-    def evaluateState(self, hypotheticalState, depth=0):
-
-        #Check if the game is over
-        if self.hasWon(hypotheticalState, self.playerId):
-            return 1.0 / (depth + 1.) #Scale
-        elif self.hasWon(hypotheticalState, 1 - self.playerId):
-            return 0.0
-
-        playerScore = self.getPlayerScore(hypotheticalState, self.playerId)
-
-        #Normalize the score to be between 0.0 and 1.0
-        return (math.atan(playerScore/SCORE_SCALE) + math.pi/2) / math.pi / (depth + 1.)
 
     ##
     #registerWin
