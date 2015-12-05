@@ -101,7 +101,7 @@ class AIPlayer(Player):
     def save(self):
         with open( 'alconcel16_ongm16_utils', 'wb' ) as f:
             pickle.dump( self.utilDic, f )
-    
+
     ##
     #load
     #
@@ -330,9 +330,12 @@ class AIPlayer(Player):
         myInv = getCurrPlayerInventory(state)
         hill = myInv.getAnthill()
 
-        if getAntAt(state, hill.coords) is None:
-            if UNIT_STATS[WORKER][COST] <= myInv.foodCount:
-                result.append(Move(BUILD, [hill.coords], WORKER))
+        #if getAntAt(state, hill.coords) is None:
+        #    if UNIT_STATS[WORKER][COST] <= myInv.foodCount:
+        #        result.append(Move(BUILD, [hill.coords], WORKER))
+
+        if len(myInv.ants) == 1:
+            result.append(Move(BUILD, [hill.coords], WORKER))
 
         result.extend(listAllMovementMoves(state))
         result.append(Move(END, None, None))
@@ -465,7 +468,7 @@ class AIPlayer(Player):
         pair1 = self.utilDic[index1]
         pair2 = self.utilDic[index2]
         #U(s) = R(S) + discount * utility of next state
-        self.utilDic[index1] = (consolidatedState, self.reward(consolidatedState) + 0.9 * self.utilDic[index2][1]) 
+        self.utilDic[index1] = (consolidatedState, self.reward(consolidatedState) + 0.9 * self.utilDic[index2][1])
 
         return newMove
 
